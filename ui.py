@@ -126,10 +126,18 @@ class TimeTrackerApp:
         self.error_label = ttk.Label(frame, textvariable=self.error_var, foreground=self._colors["error"])
         self.error_label.grid(row=2, column=0, sticky="w", pady=(0, 8))
 
-        # Clock button
+        # Clock buttons
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        btn_frame.columnconfigure(0, weight=1)
+        btn_frame.columnconfigure(1, weight=1)
+
         self.btn_text = tk.StringVar(value="Clock In")
-        self.clock_btn = ttk.Button(frame, textvariable=self.btn_text, command=self._toggle_clock)
-        self.clock_btn.grid(row=3, column=0, sticky="ew", ipady=6, pady=(0, 12))
+        self.clock_btn = ttk.Button(btn_frame, textvariable=self.btn_text, command=self._toggle_clock)
+        self.clock_btn.grid(row=0, column=0, sticky="ew", ipady=6)
+
+        self.switch_btn = ttk.Button(btn_frame, text="Switch Task", command=self._switch_task)
+        self.switch_btn.grid(row=0, column=1, sticky="ew", ipady=6, padx=(6, 0))
 
         # Status
         self.status_var = tk.StringVar(value="Status: Clocked out")
@@ -186,15 +194,17 @@ class TimeTrackerApp:
     def _apply_state(self) -> None:
         if self._state.is_clocked_in:
             self.btn_text.set("Clock Out")
-            self.task_var.set(self._state.current_task or "")
-            self.task_entry.configure(state="disabled")
+            self.task_var.set("")
+            self.task_entry.configure(state="normal")
             self.status_var.set(f"Status: Clocked in — {self._state.current_task}")
+            self.switch_btn.grid()
             self._start_timer()
         else:
             self.btn_text.set("Clock In")
             self.task_entry.configure(state="normal")
             self.status_var.set("Status: Clocked out")
             self.elapsed_var.set("Current session: --")
+            self.switch_btn.grid_remove()
             self._stop_timer()
 
     def _toggle_clock(self) -> None:
@@ -215,6 +225,29 @@ class TimeTrackerApp:
             event = TimeEvent(timestamp=now, event_type=EventType.OUT, task_name=task)
 
         append_event(CSV_PATH, event)
+        self._events = read_events()
+        self._state = get_current_state(self._events)
+        self._apply_state()
+        self._refresh_table()
+
+    def _switch_task(self) -> None:
+        self.error_var.set("")
+        if not self._state.is_clocked_in:
+            return
+
+        try:
+            new_task = validate_task_name(self.task_var.get())
+        except ValidationError as e:
+            self.error_var.set(str(e))
+            return
+
+        now = datetime.now()
+        old_task = self._state.current_task or ""
+        out_event = TimeEvent(timestamp=now, event_type=EventType.OUT, task_name=old_task)
+        in_event = TimeEvent(timestamp=now, event_type=EventType.IN, task_name=new_task)
+        append_event(CSV_PATH, out_event)
+        append_event(CSV_PATH, in_event)
+
         self._events = read_events()
         self._state = get_current_state(self._events)
         self._apply_state()
